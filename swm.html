@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MindTrack — Daily Mood & Wellness</title>
+  <style>
+    :root{
+      --bg:#0f1724;--card:#0b1220;--muted:#94a3b8;--accent:#7c3aed;--good:#16a34a;--bad:#ef4444;--glass: rgba(255,255,255,0.04);
+      --radius:14px; --pad:18px; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071026 0%,#07121a 60%);color:#e6eef8}
+    .wrap{max-width:1100px;margin:28px auto;padding:18px;display:grid;grid-template-columns:1fr 420px;gap:18px}
+    header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between}
+    h1{margin:0;font-size:20px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:var(--pad);border-radius:var(--radius);box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    form .row{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+    .mood-row{display:flex;gap:8px}
+    button.emoji{font-size:22px;padding:8px 12px;border-radius:10px;border:1px solid transparent;background:var(--glass);cursor:pointer}
+    input[type=range]{width:100%}
+    textarea{width:100%;min-height:86px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    button.primary{background:linear-gradient(90deg,var(--accent),#5b21b6);padding:10px 14px;border-radius:10px;border:0;color:white;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px;border-radius:10px;color:var(--muted);cursor:pointer}
+    .side{display:flex;flex-direction:column;gap:12px}
+    .chart-wrap{height:220px}
+    canvas{width:100%;height:100%;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00))}
+    .list{max-height:260px;overflow:auto;margin-top:8px}
+    .entry{padding:10px;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));display:flex;justify-content:space-between;gap:10px;margin-bottom:8px}
+    .muted{color:var(--muted);font-size:13px}
+    .pill{padding:6px 8px;border-radius:999px;background:rgba(255,255,255,0.03);font-weight:600;font-size:13px}
+    footer{grid-column:1/-1;margin-top:6px;text-align:center;color:var(--muted);font-size:13px}
+    /* responsiveness */
+    @media (max-width:900px){.wrap{grid-template-columns:1fr;padding:12px} .side{order:2} .card{overflow:hidden}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>MindTrack — Daily mood & wellness</h1>
+        <div class="muted">Quick check-ins • sentiment analysis • personalized suggestions</div>
+      </div>
+      <div class="muted">Local-only (stores data in your browser). Export/Import available.</div>
+    </header>
+
+    <section class="card">
+      <form id="entryForm">
+        <div class="row">
+          <div style="flex:1">
+            <label class="muted">Select mood</label>
+            <div class="mood-row" id="emojiRow" role="radiogroup" aria-label="mood emojis">
+              <button type="button" class="emoji" data-score="1">😢</button>
+              <button type="button" class="emoji" data-score="3">😕</button>
+              <button type="button" class="emoji" data-score="5">🙂</button>
+              <button type="button" class="emoji" data-score="7">😄</button>
+              <button type="button" class="emoji" data-score="9">🤩</button>
+            </div>
+          </div>
+          <div style="width:220px">
+            <label class="muted">Mood slider</label>
+            <input id="moodRange" type="range" min="0" max="10" value="5">
+          </div>
+        </div>
+
+        <div class="row">
+          <div style="flex:1">
+            <label class="muted">Quick journal (how are you feeling? optional)</label>
+            <textarea id="journal" placeholder="Write a sentence or two..."></textarea>
+          </div>
+        </div>
+
+        <div class="row controls">
+          <button class="primary" type="submit">Save check-in</button>
+          <button type="button" class="ghost" id="analyzeBtn">Analyze sentiment</button>
+          <div id="sentimentBadge" class="pill muted">Sentiment: —</div>
+        </div>
+
+        <div class="muted" style="margin-top:8px" id="recommendationBox">Personalized recommendation will appear here after saving or analyzing.</div>
+      </form>
+
+      <div style="margin-top:12px" class="muted">History & quick actions</div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="exportBtn" class="ghost">Export JSON</button>
+        <button id="importBtn" class="ghost">Import JSON</button>
+        <input id="importFile" type="file" accept="application/json" style="display:none">
+        <button id="clearBtn" class="ghost">Clear all</button>
+      </div>
+
+      <div class="list card" id="historyList" style="margin-top:12px;padding:10px;background:transparent;box-shadow:none"></div>
+    </section>
+
+    <aside class="side">
+      <div class="card chart-wrap">
+        <div class="muted">Mood trend (last 30)</div>
+        <canvas id="trendCanvas"></canvas>
+      </div>
+
+      <div class="card">
+        <div class="muted">Insights</div>
+        <div id="insights" style="margin-top:8px">No data yet — check in to start getting insights.</div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Export / share</div>
+        <div style="margin-top:8px">You can export your data as JSON and store it locally. Data is only stored in your browser's localStorage.</div>
+      </div>
+    </aside>
+
+    <footer>Built with privacy-first local storage • Prototype single-file app</footer>
+  </div>
+
+  <script>
+    // --- simple sentiment analysis wordlists ---
+    const POS = ['good','great','happy','joy','love','relaxed','calm','content','okay','fine','excited','awesome','better','improved','relieved','optimistic'];
+    const NEG = ['sad','down','angry','mad','depressed','anxious','anxiety','stressed','tired','hurt','terrible','bad','worse','upset','lonely'];
+
+    // helpers
+    const qs = s=>document.querySelector(s);
+    const el = id=>document.getElementById(id);
+
+    // state
+    let entries = JSON.parse(localStorage.getItem('mindtrack_entries')||'[]');
+
+    // UI init
+    const moodRange = el('moodRange');
+    const emojis = document.querySelectorAll('.emoji');
+    emojis.forEach(btn=>btn.addEventListener('click',()=>{emojis.forEach(b=>b.style.border='1px solid transparent');btn.style.border='1px solid rgba(255,255,255,0.08)';moodRange.value = btn.dataset.score;}));
+
+    function analyzeSentiment(text){
+      if(!text) return {score:0,label:'neutral'};
+      const t = text.toLowerCase().replace(/[^a-z\s]/g,'');
+      let p=0,n=0;
+      t.split(/\s+/).forEach(w=>{if(POS.includes(w)) p++; if(NEG.includes(w)) n++;});
+      // also quick emoji checks
+      if(/[😀😊😄🙂🤩😍]/.test(text)) p+=1;
+      if(/[😢😟☹️😞😭😠😡]/.test(text)) n+=1;
+      const raw = p - n;
+      const label = raw>0 ? 'positive' : raw<0 ? 'negative' : 'neutral';
+      return {raw, p, n, label};
+    }
+
+    function computeRecommendation(entries){
+      if(!entries.length) return 'No recommendations yet — check in daily for personalized suggestions.';
+      const recent = entries.slice(-7);
+      const avgMood = (recent.reduce((s,e)=>s+Number(e.mood),0))/recent.length;
+      const negCount = recent.filter(e=>e.sentiment==='negative').length;
+      let recs = [];
+      if(avgMood <=3 || negCount>=3) recs.push('Try a 3-minute breathing exercise or grounding (box breathing).');
+      if(avgMood>3 && avgMood<7) recs.push('Take a short walk or stretch — movement often lifts mood.');
+      if(avgMood>=7) recs.push('Keep up the good work — consider tracking what helped so you can repeat it.');
+      if(negCount>=4) recs.push('Consider reaching out to a trusted friend or a mental health professional if you feel stuck.');
+      if(recs.length===0) recs.push('Today looks stable. Keep journaling and check in tomorrow.');
+      return recs.join(' ');
+    }
+
+    function saveEntries(){ localStorage.setItem('mindtrack_entries', JSON.stringify(entries)); }
+
+    function renderHistory(){
+      const list = el('historyList'); list.innerHTML='';
+      if(!entries.length){ list.innerHTML = '<div class="muted">No entries yet</div>'; return }
+      entries.slice().reverse().forEach((e,i)=>{
+        const div = document.createElement('div'); div.className='entry';
+        div.innerHTML = `<div style="flex:1"><div><strong>${new Date(e.when).toLocaleString()}</strong> <span class="muted">• ${e.sentiment}</span></div><div class="muted">Mood: ${e.mood}/10</div><div style="margin-top:6px">${e.text?('<div style="margin-top:6px">'+(e.text.length>120?e.text.slice(0,120)+'...':e.text)+'</div>') : '<div class="muted">(no journal)</div>'}</div></div><div style="display:flex;flex-direction:column;justify-content:space-between"><button class="ghost" data-id="'+(entries.length-1-i)+'">Delete</button></div>`;
+        list.appendChild(div);
+      });
+      // attach delete handlers
+      list.querySelectorAll('button.ghost').forEach(b=>b.addEventListener('click',ev=>{
+        const idx = Number(b.dataset.id);
+        if(!confirm('Delete this entry?')) return;
+        entries.splice(idx,1); saveEntries(); renderAll();
+      }));
+    }
+
+    // charting (simple canvas line chart)
+    function drawChart(){
+      const c = el('trendCanvas');
+      c.width = c.clientWidth * devicePixelRatio; c.height = c.clientHeight * devicePixelRatio;
+      const ctx = c.getContext('2d'); ctx.scale(devicePixelRatio,devicePixelRatio);
+      ctx.clearRect(0,0,c.clientWidth,c.clientHeight);
+      const w = c.clientWidth, h = c.clientHeight; ctx.lineWidth=2.5;
+
+      const data = entries.map(e=>Number(e.mood));
+      if(data.length===0){ ctx.fillStyle='rgba(255,255,255,0.03)'; ctx.font='14px sans-serif'; ctx.fillText('No mood data yet — save a check-in to populate the chart.',12,28); return }
+      const max = 10; const min = 0;
+      const pad = 24; const plotW = w - pad*2, plotH = h - pad*2;
+      ctx.strokeStyle='rgba(124,58,237,0.95)'; ctx.beginPath();
+      data.slice(-30).forEach((v,i)=>{
+        const x = pad + (i/(Math.max(1,data.length-1))) * plotW;
+        const y = pad + (1 - (v-min)/(max-min)) * plotH;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+      // points
+      ctx.fillStyle='rgba(255,255,255,0.9)';
+      data.slice(-30).forEach((v,i)=>{
+        const x = pad + (i/(Math.max(1,data.length-1))) * plotW;
+        const y = pad + (1 - (v-min)/(max-min)) * plotH;
+        ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill();
+      });
+      // y labels
+      ctx.fillStyle='rgba(255,255,255,0.6)'; ctx.font='12px sans-serif';
+      for(let i=0;i<=5;i++){ const val = Math.round(min + (i/5)*(max-min)); const y = pad + (1 - (val-min)/(max-min)) * plotH; ctx.fillText(val,6,y+4); }
+    }
+
+    function renderInsights(){
+      const box = el('insights');
+      if(!entries.length){ box.innerText = 'No insights yet — check in every day to see trends and personalized recommendations.'; return }
+      const avg = (entries.reduce((s,e)=>s+Number(e.mood),0))/entries.length;
+      const lastSent = entries[entries.length-1].sentiment;
+      box.innerHTML = `<div>Average mood: <strong>${avg.toFixed(1)}/10</strong></div><div style="margin-top:6px">Last sentiment: <span class="pill">${lastSent}</span></div><div style="margin-top:8px">${computeRecommendation(entries)}</div>`;
+    }
+
+    function renderAll(){ renderHistory(); drawChart(); renderInsights(); el('recommendationBox').innerText = computeRecommendation(entries); }
+
+    // form handling
+    el('entryForm').addEventListener('submit',ev=>{
+      ev.preventDefault();
+      const mood = Number(moodRange.value);
+      const text = el('journal').value.trim();
+      const sent = analyzeSentiment(text).label;
+      const ent = {when: new Date().toISOString(), mood, text, sentiment: sent};
+      entries.push(ent); saveEntries(); renderAll(); el('journal').value='';
+    });
+
+    el('analyzeBtn').addEventListener('click',()=>{
+      const text = el('journal').value.trim(); const r = analyzeSentiment(text); el('sentimentBadge').innerText = `Sentiment: ${r.label} (${r.raw||0})`;
+      el('recommendationBox').innerText = computeRecommendation(entries.concat([{when:new Date().toISOString(),mood:Number(moodRange.value),text,sentiment:r.label}]));
+    });
+
+    // export/import/clear
+    el('exportBtn').addEventListener('click',()=>{
+      const blob = new Blob([JSON.stringify(entries,null,2)],{type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'mindtrack-data.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    });
+    el('importBtn').addEventListener('click',()=> el('importFile').click());
+    el('importFile').addEventListener('change', async (e)=>{
+      const file = e.target.files[0]; if(!file) return;
+      try{ const txt = await file.text(); const parsed = JSON.parse(txt); if(!Array.isArray(parsed)) throw new Error('invalid'); entries = parsed; saveEntries(); renderAll(); alert('Imported '+entries.length+' entries.'); } catch(err){ alert('Failed to import: invalid JSON'); }
+      e.target.value='';
+    });
+    el('clearBtn').addEventListener('click',()=>{ if(!confirm('Clear all stored entries? This cannot be undone.')) return; entries=[]; saveEntries(); renderAll(); });
+
+    // initial render
+    renderAll();
+
+    // responsive redraw on resize
+    window.addEventListener('resize', ()=>{ drawChart(); });
+
+    // accessibility: keyboard support for emoji buttons
+    document.querySelectorAll('.emoji').forEach((b,idx,arr)=>{ b.tabIndex=0; b.addEventListener('keydown',e=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); b.click(); } if(e.key==='ArrowRight') arr[(idx+1)%arr.length].focus(); if(e.key==='ArrowLeft') arr[(idx-1+arr.length)%arr.length].focus(); }); });
+  </script>
+</body>
+</html>
